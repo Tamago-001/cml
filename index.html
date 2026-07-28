@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>めっちゃカメレオン オンライン対応版</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #111; color: #fff; overflow: hidden; }
+    #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+
+    /* UI操作パネル */
+    .ui-panel {
+      position: absolute; top: 15px; left: 15px;
+      background: rgba(15, 15, 25, 0.92); backdrop-filter: blur(8px);
+      padding: 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15);
+      width: 270px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); z-index: 10;
+    }
+    h1 { font-size: 1.1rem; margin-bottom: 8px; color: #00ff80; text-align: center; }
+    .control-group { margin-bottom: 6px; }
+    label { display: block; font-size: 0.75rem; color: #ccc; margin-bottom: 2px; }
+    input[type="color"] { width: 100%; height: 28px; border: none; cursor: pointer; border-radius: 4px; background: transparent; }
+    input[type="range"] { width: 100%; cursor: pointer; }
+
+    .mode-switch { display: flex; gap: 5px; margin-bottom: 8px; }
+    .mode-btn {
+      flex: 1; padding: 6px; background: #2a2a3a; border: 1px solid #444; color: #aaa;
+      border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-weight: bold; text-align: center;
+    }
+    .mode-btn.active { background: #00ff80; color: #000; border-color: #00ff80; }
+
+    .btn { width: 100%; padding: 8px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; margin-top: 4px; }
+    .btn-main { background: #00d26a; color: #000; font-size: 0.85rem; }
+    .btn-main:hover { background: #00ff80; }
+    .btn-sub { background: #3a3a4e; color: #fff; font-size: 0.75rem; }
+    .btn-sub:hover { background: #4a4a62; }
+
+    #textureCanvas { border: 1px solid #555; background: #fff; border-radius: 4px; cursor: crosshair; width: 110px; height: 110px; display: block; margin: 4px auto; }
+
+    .score-display { margin-top: 6px; background: rgba(0,0,0,0.5); padding: 6px; border-radius: 6px; text-align: center; border: 1px solid #333; }
+    .score-value { font-size: 1.3rem; font-weight: bold; color: #00ff80; }
+
+    /* ロビー・マルチプレイUI */
+    #lobby-overlay {
+      position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(10, 10, 15, 0.93); z-index: 100;
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      overflow-y: auto; padding: 20px;
+    }
+    .lobby-box { background: #1e1e2d; padding: 25px; border-radius: 16px; border: 1px solid #333; text-align: center; max-width: 480px; width: 100%; }
+    .lobby-box h2 { color: #00ff80; margin-bottom: 12px; }
+    .lobby-box input[type="text"] { width: 100%; padding: 8px; margin: 8px 0; border-radius: 6px; border: 1px solid #444; background: #0d0d15; color: #fff; text-align: center; }
+
+    /* ロビー内の説明スタイル */
+    .rule-box {
+      background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px; padding: 12px; margin: 15px 0; text-align: left; font-size: 0.8rem; line-height: 1.5;
+    }
+    .rule-box h3 { color: #00ff80; font-size: 0.9rem; margin-bottom: 6px; border-bottom: 1px solid #333; padding-bottom: 4px; }
+    .rule-box ul { padding-left: 18px; margin-bottom: 8px; }
+    .rule-box li { margin-bottom: 3px; }
+
+    /* HUD & タイマー */
+    #game-hud { position: absolute; top: 15px; right: 15px; text-align: right; z-index: 10; pointer-events: none; }
+    .hud-timer { font-size: 2.2rem; font-weight: bold; color: #00ff80; text-shadow: 0 0 10px rgba(0,255,128,0.5); }
+    .hud-role { font-size: 1.1rem; font-weight: bold; }
+
+    /* クロスヘア（鬼用） */
+    #crosshair {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 10px; height: 10px; border: 2px solid rgba(255, 50, 50, 0.8); border-radius: 50%;
+      pointer-events: none; z-index: 20; display: none;
+    }
+
+    /* 暗転画面（鬼待機用） */
+    #blackout {
+      position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: #000; color: #ff3d00; display: none; flex-direction: column;
+      justify-content: center; align-items: center; z-index: 90;
+    }
+
+    /* 操作ガイド */
+    .instructions {
+      position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.85); padding: 8px 18px; border-radius: 20px; font-size: 0.75rem;
+      pointer-events: none; border: 1px solid rgba(255,255,255,0.2); text-align: center; line-height: 1.3; z-index: 5;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+  <div id="lobby-overlay">
+    <div class="lobby-box">
+      <h2>めっちゃカメレオン<br>オンライン対戦対応版</h2>
+      
+      <div class="rule-box">
+        <h3>📖 遊び方・ルール</h3>
+        <ul>
+          <li><b>隠れる時間 (120秒):</b> 体をペイントして壁や景色と同化し、鬼から隠れよう！</li>
+          <li><b>鬼ごっこ時間 (60秒):</b> 鬼が解き放たれます。<b>1分間（60秒）</b>逃げ切れれば隠れ側の勝ち！</li>
+          <li><b>鬼の勝利条件:</b> 制限時間内に隠れているプレイヤー全員を見つけて撃つこと！</li>
+        </ul>
+        <h3>🎮 操作方法</h3>
+        <ul>
+          <li><b>[W][A][S][D]:</b> 移動</li>
+          <li><b>[Shift + W]:</b> 壁登り / <b>[S]:</b> 下降（キーを離すと位置固定）</li>
+          <li><b>[P]:</b> ペイントモード（3Dモデル/展開図をドラッグで塗る）</li>
+          <li><b>[M]:</b> 移動モード / <b>[C]:</b> ポーズ変更 / <b>[F]:</b> カメラ切り替え</li>
+        </ul>
+      </div>
+
+      <button class="btn btn-main" id="createRoomBtn" style="padding:10px; font-size:1rem;">部屋を作成する（ホスト）</button>
+      
+      <div id="hostLinkArea" style="display:none; margin-top:12px;">
+        <label>招待リンク:</label>
+        <input type="text" id="shareLinkInput" readonly>
+        <button class="btn btn-sub" onclick="copyLink()">リンクをコピー</button>
+        <p style="margin-top:8px; color:#00ff80;">参加者数: <span id="playerCount">1</span></p>
+        <button class="btn btn-main" id="startGameBtn" style="margin-top:10px; padding:10px;">ゲーム開始！</button>
+      </div>
+
+      <div id="clientStatusArea" style="display:none; margin-top:12px; color:#00ff80;">
+        ホストに接続中...（ホストの開始を待っています）
+      </div>
+    </div>
+  </div>
+
+  <div id="game-hud">
+    <div class="hud-role" id="roleDisplay">役割: 待機中</div>
+    <div class="hud-timer" id="timerDisplay">120</div>
+  </div>
+
+  <div id="crosshair"></div>
+
+  <div id="blackout">
+    <h2>あなたは【 鬼 】です！</h2>
+    <p>隠れる時間が終わるまで待機中...</p>
+    <h1 id="blackoutTimer" style="font-size:3.5rem; color:#fff; margin-top:15px;">120</h1>
+  </div>
+
+  <div class="ui-panel">
+    <h1>カメレオン設定</h1>
+
+    <div class="mode-switch">
+      <div id="btnMoveMode" class="mode-btn active">移動 [M]</div>
+      <div id="btnPaintMode" class="mode-btn">ペイント [P]</div>
+    </div>
+
+    <div class="control-group">
+      <label>ペンカラー</label>
+      <input type="color" id="penColor" value="#a53224">
+    </div>
+    <div class="control-group">
+      <label>ブラシサイズ</label>
+      <input type="range" id="penSize" min="3" max="30" value="10">
+    </div>
+
+    <button class="btn btn-sub" id="poseBtn">ポーズ切替 [C]</button>
+
+    <div style="text-align: center; margin-top: 4px;">
+      <label style="font-size:0.7rem;">展開図ペイント</label>
+      <canvas id="textureCanvas" width="512" height="512"></canvas>
+    </div>
+
+    <button class="btn btn-sub" id="resetPaintBtn">色クリア</button>
+    <button class="btn btn-main" id="checkBtn">同化度チェック</button>
+
+    <div class="score-display">
+      <div style="font-size:0.7rem;">同化度スコア</div>
+      <div class="score-value" id="scoreText">-- %</div>
+    </div>
+  </div>
+
+  <div class="instructions" id="instructionText">
+    【移動】[W][A][S][D] | <b style="color:#00ff80;">[Shift+W] 壁登り / [S] 下降（キー離すと空中固定）</b> | [F] フリーカメラ
+  </div>
+
+  <div id="canvas-container"></div>
+
+  <script>
+    window.addEventListener('contextmenu', e => e.preventDefault());
+
+    // UV割り当て用共通関数（展開図の各セルを正しくマッピング）
+    function applyUniqueUVs(geometry, partIndex) {
+      const uvAttr = geometry.attributes.uv;
+      const uvs = uvAttr.array;
+      for (let faceIndex = 0; faceIndex < 6; faceIndex++) {
+        const cellIndex = partIndex * 6 + faceIndex;
+        const col = cellIndex % 8;
+        const row = Math.floor(cellIndex / 8);
+        const uMin = col / 8, uMax = (col + 1) / 8;
+        const vMin = 1 - (row + 1) / 8, vMax = 1 - row / 8;
+        const offset = faceIndex * 8;
+        uvs[offset + 0] = uMin; uvs[offset + 1] = vMax;
+        uvs[offset + 2] = uMax; uvs[offset + 3] = vMax;
+        uvs[offset + 4] = uMin; uvs[offset + 5] = vMin;
+        uvs[offset + 6] = uMax; uvs[offset + 7] = vMin;
+      }
+      uvAttr.needsUpdate = true;
+    }
+
+    // --- 1. テクスチャ ＆ キャンバス ---
+    const texCanvas = document.getElementById('textureCanvas');
+    const texCtx = texCanvas.getContext('2d');
+
+    function initTextureCanvas() {
+      texCtx.fillStyle = '#ffffff';
+      texCtx.fillRect(0, 0, texCanvas.width, texCanvas.height);
+      texCtx.strokeStyle = '#e0e0e0';
+      texCtx.lineWidth = 1;
+      const cellSize = 512 / 8;
+      for (let i = 0; i <= 8; i++) {
+        texCtx.beginPath(); texCtx.moveTo(i * cellSize, 0); texCtx.lineTo(i * cellSize, 512); texCtx.stroke();
+        texCtx.beginPath(); texCtx.moveTo(0, i * cellSize); texCtx.lineTo(512, i * cellSize); texCtx.stroke();
+      }
+    }
+    initTextureCanvas();
+    const dynamicTexture = new THREE.CanvasTexture(texCanvas);
+    dynamicTexture.needsUpdate = true;
+
+    // --- 2. 3D シーン構成 ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a24);
+    scene.fog = new THREE.FogExp2(0x1a1a24, 0.015);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(20, 40, 20);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    const floorGeo = new THREE.PlaneGeometry(100, 100);
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x22222b, roughness: 0.8 });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    // --- 3. プロップ用テクスチャパターンの生成 ---
+    function createPatternTexture(drawFn) {
+      const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
+      const cx = cv.getContext('2d'); drawFn(cx);
+      const tex = new THREE.CanvasTexture(cv);
+      tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+      return tex;
+    }
+
+    const brickTex = createPatternTexture(cx => {
+      cx.fillStyle = '#a53224'; cx.fillRect(0,0,256,256); cx.strokeStyle = '#7a2217'; cx.lineWidth = 4;
+      for(let y=0; y<256; y+=32) {
+        let offset = (y/32)%2 === 0 ? 0 : 32;
+        for(let x=-offset; x<256; x+=64) cx.strokeRect(x, y, 64, 32);
+      }
+    });
+    const signTex = createPatternTexture(cx => {
+      cx.fillStyle = '#ffcc00'; cx.fillRect(0,0,256,256);
+      cx.fillStyle = '#000000'; cx.font = 'bold 32px Arial'; cx.fillText('DANGER', 60, 100); cx.fillText('KEEP OUT', 50, 160);
+    });
+    const vendingTex = createPatternTexture(cx => {
+      cx.fillStyle = '#1e88e5'; cx.fillRect(0,0,256,256);
+      cx.fillStyle = '#ffffff'; cx.fillRect(20, 20, 216, 100);
+      cx.fillStyle = '#ff3d00'; cx.fillRect(30, 150, 40, 60); cx.fillStyle = '#00e676'; cx.fillRect(80, 150, 40, 60);
+    });
+    const woodTex = createPatternTexture(cx => {
+      cx.fillStyle = '#8d5524'; cx.fillRect(0,0,256,256); cx.strokeStyle = '#5c3311'; cx.lineWidth = 6;
+      cx.strokeRect(10,10,236,236); cx.beginPath(); cx.moveTo(10,10); cx.lineTo(246,246); cx.stroke();
+    });
+    const checkerTex = createPatternTexture(cx => {
+      cx.fillStyle = '#ffffff'; cx.fillRect(0,0,256,256); cx.fillStyle = '#111111';
+      for(let y=0; y<256; y+=64) { for(let x=0; x<256; x+=64) { if((x/64 + y/64)%2 === 0) cx.fillRect(x,y,64,64); } }
+    });
+    const containerTex = createPatternTexture(cx => {
+      cx.fillStyle = '#2e7d32'; cx.fillRect(0,0,256,256); cx.strokeStyle = '#1b5e20'; cx.lineWidth = 8;
+      for(let x=0; x<256; x+=32) { cx.strokeRect(x,0,16,256); }
+    });
+
+    // --- 4. プロップ生成 ---
+    const props = [];
+    const objects = [];
+
+    function createProp(x, z, w, h, d, tex, avgColorHex) {
+      const geo = new THREE.BoxGeometry(w, h, d);
+      const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(x, h/2, z);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      scene.add(mesh);
+
+      const inset = 0.35;
+      const wallBox = new THREE.Box3(
+        new THREE.Vector3(x - w/2 + inset, 0, z - d/2 + inset),
+        new THREE.Vector3(x + w/2 - inset, h + 0.5, z + d/2 - inset)
+      );
+      const nearBox = new THREE.Box3(
+        new THREE.Vector3(x - w/2 - 0.6, 0, z - d/2 - 0.6),
+        new THREE.Vector3(x + w/2 + 0.6, h + 1.0, z + d/2 + 0.6)
+      );
+
+      props.push({ mesh, wallBox, nearBox, x, z, w, h, d });
+      objects.push({ mesh, color: new THREE.Color(avgColorHex) });
+    }
+
+    createProp(0, -50, 100, 16, 2, brickTex, 0xa53224);
+    createProp(0, 50, 100, 16, 2, brickTex, 0xa53224);
+    createProp(-50, 0, 2, 16, 100, brickTex, 0xa53224);
+    createProp(50, 0, 2, 16, 100, brickTex, 0xa53224);
+
+    createProp(-30, -20, 16, 12, 2, brickTex, 0xa53224);
+    createProp(-30, 10, 2, 12, 16, checkerTex, 0x888888);
+    createProp(20, -30, 8, 12, 2, signTex, 0xffcc00);
+    createProp(-15, 30, 6, 10, 4, vendingTex, 0x1e88e5);
+    createProp(-22, 30, 6, 10, 4, vendingTex, 0x1e88e5);
+    createProp(25, 20, 8, 6, 8, woodTex, 0x8d5524);
+    createProp(32, 25, 6, 4, 6, woodTex, 0x8d5524);
+    createProp(0, -15, 6, 12, 6, checkerTex, 0x888888);
+    createProp(35, -10, 2, 12, 24, brickTex, 0xa53224);
+    createProp(-10, -35, 12, 6, 12, containerTex, 0x2e7d32);
+    createProp(5, 35, 16, 8, 8, containerTex, 0x2e7d32);
+    createProp(15, 0, 4, 10, 4, signTex, 0xffcc00);
+
+    // --- 5. プレイヤー（自キャラ） ---
+    const playerGroup = new THREE.Group();
+    scene.add(playerGroup);
+
+    const playerMaterial = new THREE.MeshStandardMaterial({ map: dynamicTexture, roughness: 0.6 });
+    const playerParts = [];
+
+    function addPart(geo, partIndex, x, y, z) {
+      applyUniqueUVs(geo, partIndex);
+      const mesh = new THREE.Mesh(geo, playerMaterial);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      playerGroup.add(mesh);
+      playerParts.push(mesh);
+      return mesh;
+    }
+
+    const head = addPart(new THREE.BoxGeometry(0.8, 0.8, 0.8), 0, 0, 2.2, 0);
+    const body = addPart(new THREE.BoxGeometry(0.8, 1.0, 0.4), 1, 0, 1.3, 0);
+    const armL = addPart(new THREE.BoxGeometry(0.3, 1.0, 0.3), 2, 0.65, 1.3, 0);
+    const armR = addPart(new THREE.BoxGeometry(0.3, 1.0, 0.3), 3, -0.65, 1.3, 0);
+    const legL = addPart(new THREE.BoxGeometry(0.35, 0.8, 0.35), 4, 0.22, 0.4, 0);
+    const legR = addPart(new THREE.BoxGeometry(0.35, 0.8, 0.35), 5, -0.22, 0.4, 0);
+
+    // 鬼の銃モデル
+    const gunGroup = new THREE.Group();
+    const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, 0.7), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+    gunGroup.add(gunBody);
+    gunGroup.position.set(0.35, -0.25, -0.5);
+    camera.add(gunGroup);
+    gunGroup.visible = false;
+    scene.add(camera);
+
+    // --- 6. ポーズ切替 ---
+    let currentPose = 0;
+    function setPose(poseIdx) {
+      currentPose = poseIdx;
+      if (currentPose === 0) {
+        body.position.set(0, 1.3, 0); head.position.set(0, 2.2, 0);
+        armL.rotation.z = 0; armR.rotation.z = 0;
+      } else if (currentPose === 1) {
+        body.position.set(0, 0.8, 0); head.position.set(0, 1.5, 0);
+        armL.rotation.z = 0.2; armR.rotation.z = -0.2;
+      } else if (currentPose === 2) {
+        body.position.set(0, 1.3, 0); head.position.set(0, 2.2, 0);
+        armL.rotation.z = Math.PI / 2.2; armR.rotation.z = -Math.PI / 2.2;
+      }
+    }
+    document.getElementById('poseBtn').addEventListener('click', () => setPose((currentPose + 1) % 3));
+
+    // --- 7. ペイント ＆ モード制御 ---
+    let mode = 'MOVE';
+    const btnMoveMode = document.getElementById('btnMoveMode');
+    const btnPaintMode = document.getElementById('btnPaintMode');
+
+    function setMode(newMode) {
+      mode = newMode;
+      if (mode === 'MOVE') {
+        btnMoveMode.classList.add('active'); btnPaintMode.classList.remove('active');
+      } else {
+        btnPaintMode.classList.add('active'); btnMoveMode.classList.remove('active');
+      }
+    }
+    btnMoveMode.addEventListener('click', () => setMode('MOVE'));
+    btnPaintMode.addEventListener('click', () => setMode('PAINT'));
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let isPainting = false, isMouseDown = false, isRightMouseDown = false, prevMouseX = 0, prevMouseY = 0;
+    let cameraAngleX = 0, cameraAngleY = 0.3;
+
+    function paintOnRaycast(e) {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(playerParts);
+
+      if (intersects.length > 0 && intersects[0].uv) {
+        const hit = intersects[0];
+        const x = hit.uv.x * texCanvas.width;
+        const y = (1 - hit.uv.y) * texCanvas.height;
+        const color = document.getElementById('penColor').value;
+        const size = document.getElementById('penSize').value;
+
+        texCtx.fillStyle = color;
+        texCtx.beginPath(); texCtx.arc(x, y, size / 2, 0, Math.PI * 2); texCtx.fill();
+        dynamicTexture.needsUpdate = true;
+      }
+    }
+
+    let is2DPainting = false;
+    function paintOn2DCanvas(e) {
+      const rect = texCanvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (texCanvas.width / rect.width);
+      const y = (e.clientY - rect.top) * (texCanvas.height / rect.height);
+      const color = document.getElementById('penColor').value;
+      const size = document.getElementById('penSize').value;
+
+      texCtx.fillStyle = color;
+      texCtx.beginPath(); texCtx.arc(x, y, size / 2, 0, Math.PI * 2); texCtx.fill();
+      dynamicTexture.needsUpdate = true;
+    }
+
+    texCanvas.addEventListener('mousedown', (e) => { is2DPainting = true; paintOn2DCanvas(e); });
+    
+    window.addEventListener('mouseup', () => {
+      if ((is2DPainting || isPainting) && myId) {
+        const textureData = texCanvas.toDataURL('image/png');
+        broadcast({ type: 'PAINT_UPDATE', id: myId, textureData });
+      }
+      is2DPainting = false; isPainting = false; isMouseDown = false; isRightMouseDown = false;
+    });
+
+    texCanvas.addEventListener('mousemove', (e) => { if (is2DPainting) paintOn2DCanvas(e); });
+
+    window.addEventListener('mousedown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target === texCanvas || e.target.closest('.lobby-box')) return;
+      prevMouseX = e.clientX; prevMouseY = e.clientY;
+
+      if (e.button === 2 || (mode === 'PAINT' && e.shiftKey)) {
+        isRightMouseDown = true;
+      } else if (mode === 'PAINT') {
+        isPainting = true;
+        paintOnRaycast(e);
+      } else {
+        isMouseDown = true;
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isRightMouseDown || (mode === 'MOVE' && isMouseDown)) {
+        cameraAngleX -= (e.clientX - prevMouseX) * 0.005;
+        cameraAngleY += (e.clientY - prevMouseY) * 0.005;
+        cameraAngleY = Math.max(-Math.PI/2.2, Math.min(Math.PI / 2.2, cameraAngleY));
+        prevMouseX = e.clientX; prevMouseY = e.clientY;
+      } else if (mode === 'PAINT' && isPainting) {
+        paintOnRaycast(e);
+      }
+    });
+
+    document.getElementById('resetPaintBtn').addEventListener('click', () => {
+      initTextureCanvas();
+      dynamicTexture.needsUpdate = true;
+      document.getElementById('scoreText').innerText = '-- %';
+      if (myId) {
+        const textureData = texCanvas.toDataURL('image/png');
+        broadcast({ type: 'PAINT_UPDATE', id: myId, textureData });
+      }
+    });
+
+    // --- 8. 同化度判定 ---
+    document.getElementById('checkBtn').addEventListener('click', () => {
+      let minDistance = Infinity;
+      let targetColor = floorMat.color;
+      const playerPos = playerGroup.position;
+
+      objects.forEach(obj => {
+        const dist = playerPos.distanceTo(obj.mesh.position);
+        if (dist < minDistance && dist < 8) { minDistance = dist; targetColor = obj.color; }
+      });
+
+      const imgData = texCtx.getImageData(0, 0, texCanvas.width, texCanvas.height).data;
+      let rSum = 0, gSum = 0, bSum = 0, count = 0;
+      for (let i = 0; i < imgData.length; i += 4) {
+        rSum += imgData[i]; gSum += imgData[i + 1]; bSum += imgData[i + 2]; count++;
+      }
+      const rDiff = Math.abs((rSum / count) / 255 - targetColor.r);
+      const gDiff = Math.abs((gSum / count) / 255 - targetColor.g);
+      const bDiff = Math.abs((bSum / count) / 255 - targetColor.b);
+      let score = Math.max(0, Math.round((1 - (rDiff + gDiff + bDiff) / 3) * 100));
+      document.getElementById('scoreText').innerText = score + '%';
+    });
+
+    // --- 9. P2P ネットワーク通信 ---
+    let peer = null, connections = [], isHost = false, myId = '';
+    const lobbyOverlay = document.getElementById('lobby-overlay');
+    const createRoomBtn = document.getElementById('createRoomBtn');
+    const hostLinkArea = document.getElementById('hostLinkArea');
+    const shareLinkInput = document.getElementById('shareLinkInput');
+    const startGameBtn = document.getElementById('startGameBtn');
+    const clientStatusArea = document.getElementById('clientStatusArea');
+
+    const hostIdFromUrl = new URLSearchParams(window.location.search).get('host');
+    if (hostIdFromUrl) {
+      createRoomBtn.style.display = 'none'; clientStatusArea.style.display = 'block';
+      initPeer(false, hostIdFromUrl);
+    }
+
+    createRoomBtn.addEventListener('click', () => {
+      createRoomBtn.style.display = 'none'; hostLinkArea.style.display = 'block';
+      initPeer(true);
+    });
+
+    function initPeer(hostFlag, targetHostId = null) {
+      isHost = hostFlag; peer = new Peer();
+      peer.on('open', (id) => {
+        myId = id;
+        if (isHost) {
+          shareLinkInput.value = window.location.origin + window.location.pathname + '?host=' + id;
+        } else if (targetHostId) {
+          setupConnection(peer.connect(targetHostId));
+        }
+      });
+      peer.on('connection', conn => { if (isHost) setupConnection(conn); });
+    }
+
+    function setupConnection(conn) {
+      connections.push(conn);
+      conn.on('open', () => { if (isHost) document.getElementById('playerCount').innerText = connections.length + 1; });
+      conn.on('data', data => handleNetworkData(data));
+      conn.on('close', () => { connections = connections.filter(c => c !== conn); });
+    }
+
+    function broadcast(data) { connections.forEach(c => { if (c.open) c.send(data); }); }
+    function copyLink() { shareLinkInput.select(); document.execCommand('copy'); alert('招待リンクをコピーしました！'); }
+
+    // --- 10. ゲーム進行制御 ---
+    let gameState = 'LOBBY', myRole = 'SURVIVOR', hideTimer = 120, timerInterval = null;
+    let remotePlayers = {};
+
+    function createRemotePlayerMesh(id, isHunter = false) {
+      const group = new THREE.Group();
+      const scale = isHunter ? 1.5 : 1.0;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 512; canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 512, 512);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      const mat = new THREE.MeshStandardMaterial({ map: tex });
+
+      function addRemotePart(geo, partIndex, x, y, z) {
+        applyUniqueUVs(geo, partIndex);
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(x * scale, y * scale, z * scale);
+        mesh.scale.set(scale, scale, scale);
+        group.add(mesh);
+        return mesh;
+      }
+
+      addRemotePart(new THREE.BoxGeometry(0.8, 0.8, 0.8), 0, 0, 2.2, 0);
+      addRemotePart(new THREE.BoxGeometry(0.8, 1.0, 0.4), 1, 0, 1.3, 0);
+      addRemotePart(new THREE.BoxGeometry(0.3, 1.0, 0.3), 2, 0.65, 1.3, 0);
+      addRemotePart(new THREE.BoxGeometry(0.3, 1.0, 0.3), 3, -0.65, 1.3, 0);
+      addRemotePart(new THREE.BoxGeometry(0.35, 0.8, 0.35), 4, 0.22, 0.4, 0);
+      addRemotePart(new THREE.BoxGeometry(0.35, 0.8, 0.35), 5, -0.22, 0.4, 0);
+
+      group.userData = { canvas, tex, mat, isHunter };
+      scene.add(group);
+      return group;
+    }
+
+    startGameBtn.addEventListener('click', () => {
+      if (!isHost) return;
+      const allIds = [myId, ...connections.map(c => c.peer)];
+      const hunterId = allIds[Math.floor(Math.random() * allIds.length)];
+      broadcast({ type: 'GAME_START', hunterId, hideTime: 120 });
+      handleGameStart(hunterId, 120);
+    });
+
+    function handleGameStart(hunterId, time) {
+      lobbyOverlay.style.display = 'none'; gameState = 'HIDE_TIME'; hideTimer = time;
+      if (myId === hunterId) {
+        myRole = 'HUNTER';
+        document.getElementById('roleDisplay').innerText = '役割: 鬼 (HUNTER)';
+        document.getElementById('roleDisplay').style.color = '#ff3d00';
+        document.getElementById('blackout').style.display = 'flex';
+        playerGroup.scale.set(1.5, 1.5, 1.5);
+      } else {
+        myRole = 'SURVIVOR';
+        document.getElementById('roleDisplay').innerText = '役割: 隠れる人';
+        document.getElementById('roleDisplay').style.color = '#00ff80';
+      }
+
+      timerInterval = setInterval(() => {
+        hideTimer--;
+        document.getElementById('timerDisplay').innerText = hideTimer;
+        document.getElementById('blackoutTimer').innerText = hideTimer;
+
+        if (hideTimer <= 0) {
+          if (gameState === 'HIDE_TIME') {
+            startHuntPhase();
+          } else if (gameState === 'HUNT_TIME') {
+            clearInterval(timerInterval);
+            if (isHost) {
+              broadcast({ type: 'GAME_OVER', winner: 'SURVIVOR' });
+              handleGameOver('SURVIVOR');
+            }
+          }
+        }
+      }, 1000);
+    }
+
+    // ★修正: 鬼ごっこ（探索）フェーズの制限時間を60秒（1分間）に設定
+    function startHuntPhase() {
+      gameState = 'HUNT_TIME';
+      hideTimer = 60; 
+      document.getElementById('timerDisplay').innerText = hideTimer;
+      document.getElementById('blackout').style.display = 'none';
+      if (myRole === 'HUNTER') {
+        playerGroup.position.set(0, 0, 0);
+        document.getElementById('crosshair').style.display = 'block';
+        gunGroup.visible = true;
+      }
+    }
+
+    function handleGameOver(winner) {
+      gameState = 'LOBBY';
+      clearInterval(timerInterval);
+      if (document.exitPointerLock) document.exitPointerLock();
+
+      setTimeout(() => {
+        if (winner === 'HUNTER') {
+          alert('【GAME OVER】 鬼の勝利！全員見つかりました。');
+        } else {
+          alert('【VICTORY!】 60秒間逃げ切り成功！隠れ側の勝利です！');
+        }
+        location.reload();
+      }, 100);
+    }
+
+    function handlePlayerCaught(caughtId) {
+      if (caughtId === myId) {
+        myRole = 'HUNTER';
+        alert('見つかった！あなたも鬼になります。');
+        playerGroup.scale.set(1.5, 1.5, 1.5);
+      }
+      if (remotePlayers[caughtId]) {
+        remotePlayers[caughtId].userData.isHunter = true;
+        remotePlayers[caughtId].children.forEach(child => {
+          child.material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+        });
+      }
+
+      if (isHost && gameState === 'HUNT_TIME') {
+        let survivors = myRole === 'SURVIVOR' ? 1 : 0;
+        for (let rId in remotePlayers) {
+          if (!remotePlayers[rId].userData.isHunter) survivors++;
+        }
+        if (survivors === 0) {
+          broadcast({ type: 'GAME_OVER', winner: 'HUNTER' });
+          handleGameOver('HUNTER');
+        }
+      }
+    }
+
+    function handleNetworkData(data) {
+      if (data.type === 'GAME_START') handleGameStart(data.hunterId, data.hideTime);
+      else if (data.type === 'POS_UPDATE') {
+        if (!remotePlayers[data.id]) remotePlayers[data.id] = createRemotePlayerMesh(data.id, data.isHunter);
+        if (gameState === 'HIDE_TIME' && myRole !== 'HUNTER') remotePlayers[data.id].visible = false;
+        else {
+          remotePlayers[data.id].visible = true;
+          remotePlayers[data.id].position.set(data.x, data.y, data.z);
+          remotePlayers[data.id].rotation.y = data.rotY;
+        }
+      } else if (data.type === 'PLAYER_CAUGHT') {
+        handlePlayerCaught(data.caughtId);
+      } else if (data.type === 'PAINT_UPDATE') {
+        const p = remotePlayers[data.id];
+        if (p && p.userData && p.userData.canvas) {
+          const img = new Image();
+          img.onload = () => {
+            const ctx = p.userData.canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            p.userData.tex.needsUpdate = true;
+          };
+          img.src = data.textureData;
+        }
+      } else if (data.type === 'GAME_OVER') {
+        handleGameOver(data.winner);
+      }
+    }
+
+    // --- 11. FPS ポインターロック & 射撃 ---
+    let isPointerLocked = false;
+    document.addEventListener('click', (e) => {
+      if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target === texCanvas) return;
+      if (gameState === 'HUNT_TIME' && myRole === 'HUNTER' && !isPointerLocked) document.body.requestPointerLock();
+    });
+    document.addEventListener('pointerlockchange', () => { isPointerLocked = (document.pointerLockElement === document.body); });
+
+    document.addEventListener('mousemove', (e) => {
+      if (isPointerLocked) {
+        cameraAngleX -= e.movementX * 0.002;
+        cameraAngleY -= e.movementY * 0.002;
+        cameraAngleY = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, cameraAngleY));
+      }
+    });
+
+    document.addEventListener('mousedown', (e) => {
+      if (e.button === 0 && myRole === 'HUNTER' && gameState === 'HUNT_TIME' && isPointerLocked) {
+        const ray = new THREE.Raycaster();
+        ray.setFromCamera(new THREE.Vector2(0, 0), camera);
+        const intersects = ray.intersectObjects(scene.children, true);
+        for (let hit of intersects) {
+          if (props.some(p => p.mesh === hit.object)) break;
+          for (let rId in remotePlayers) {
+            if (remotePlayers[rId] === hit.object.parent || remotePlayers[rId] === hit.object) {
+              broadcast({ type: 'PLAYER_CAUGHT', caughtId: rId });
+              handlePlayerCaught(rId); return;
+            }
+          }
+        }
+      }
+    });
+
+    // --- 12. 判定システム ---
+    function checkWallCollision(newX, newY, newZ) {
+      const coreRadius = 0.15;
+      const playerBox = new THREE.Box3(
+        new THREE.Vector3(newX - coreRadius, newY + 0.5, newZ - coreRadius),
+        new THREE.Vector3(newX + coreRadius, newY + 2.0, newZ + coreRadius)
+      );
+      for (let p of props) { if (playerBox.intersectsBox(p.wallBox)) return p; }
+      return null;
+    }
+
+    function checkNearWall(x, y, z) {
+      const playerBox = new THREE.Box3(
+        new THREE.Vector3(x - 0.4, y, z - 0.4),
+        new THREE.Vector3(x + 0.4, y + 2.0, z + 0.4)
+      );
+      for (let p of props) { if (playerBox.intersectsBox(p.nearBox)) return p; }
+      return null;
+    }
+
+    function getTopSupportY(x, y, z) {
+      let highestY = 0;
+      for (let p of props) {
+        if (x >= p.x - p.w/2 && x <= p.x + p.w/2 && z >= p.z - p.d/2 && z <= p.z + p.d/2) {
+          if (y >= p.h - 0.8) highestY = Math.max(highestY, p.h);
+        }
+      }
+      return highestY;
+    }
+
+    // --- 13. 入力＆アニメーションループ ---
+    const keys = { w: false, a: false, s: false, d: false, shift: false };
+    let isFreeCam = false;
+
+    window.addEventListener('keydown', (e) => {
+      const k = e.key.toLowerCase();
+      if (keys.hasOwnProperty(k)) keys[k] = true;
+      if (e.key === 'Shift') keys.shift = true;
+      if (k === 'm') setMode('MOVE');
+      if (k === 'p') setMode('PAINT');
+      if (k === 'c') setPose((currentPose + 1) % 3);
+      if (k === 'f') isFreeCam = !isFreeCam;
+    });
+
+    window.addEventListener('keyup', (e) => {
+      const k = e.key.toLowerCase();
+      if (keys.hasOwnProperty(k)) keys[k] = false;
+      if (e.key === 'Shift') keys.shift = false;
+    });
+
+    const speed = 0.15;
+    const climbSpeed = 0.12;
+    let isClimbing = false;
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (mode === 'MOVE' && gameState !== 'LOBBY' && !(gameState === 'HIDE_TIME' && myRole === 'HUNTER')) {
+        let moveX = 0, moveZ = 0;
+        if (keys.w) moveZ -= 1; if (keys.s) moveZ += 1;
+        if (keys.a) moveX -= 1; if (keys.d) moveX += 1;
+
+        const currX = playerGroup.position.x;
+        const currY = playerGroup.position.y;
+        const currZ = playerGroup.position.z;
+        const dx = (moveX * Math.cos(cameraAngleX) + moveZ * Math.sin(cameraAngleX)) * speed;
+        const dz = (-moveX * Math.sin(cameraAngleX) + moveZ * Math.cos(cameraAngleX)) * speed;
+
+        const nearProp = checkNearWall(currX, currY, currZ);
+
+        if (!isClimbing && keys.shift && keys.w && nearProp) {
+          isClimbing = true; setPose(2);
+        }
+
+        if (isClimbing) {
+          if (!nearProp) {
+            isClimbing = false; setPose(0);
+          } else {
+            if (keys.shift && keys.w) {
+              if (currY < nearProp.h) playerGroup.position.y += climbSpeed;
+              else { playerGroup.position.y = nearProp.h; isClimbing = false; setPose(0); }
+            } else if (keys.s) {
+              playerGroup.position.y -= climbSpeed;
+              const supportY = getTopSupportY(currX, playerGroup.position.y, currZ);
+              if (playerGroup.position.y <= supportY) {
+                playerGroup.position.y = supportY; isClimbing = false; setPose(0);
+              }
+            }
+          }
+        } 
+        else {
+          if (moveX !== 0 || moveZ !== 0) {
+            if (!checkWallCollision(currX + dx, currY, currZ)) playerGroup.position.x += dx;
+            if (!checkWallCollision(currX, currY, currZ + dz)) playerGroup.position.z += dz;
+            if (myRole !== 'HUNTER') playerGroup.rotation.y = Math.atan2(dx, dz);
+          }
+          if (myRole === 'HUNTER') playerGroup.rotation.y = cameraAngleX;
+
+          const supportY = getTopSupportY(playerGroup.position.x, playerGroup.position.y, playerGroup.position.z);
+          if (playerGroup.position.y > supportY) {
+            playerGroup.position.y = Math.max(supportY, playerGroup.position.y - 0.25);
+          } else {
+            playerGroup.position.y = supportY;
+          }
+        }
+
+        if (myId) {
+          broadcast({
+            type: 'POS_UPDATE', id: myId,
+            x: playerGroup.position.x, y: playerGroup.position.y, z: playerGroup.position.z,
+            rotY: playerGroup.rotation.y, isHunter: (myRole === 'HUNTER')
+          });
+        }
+      }
+
+      if (!isFreeCam) {
+        if (myRole === 'HUNTER' && gameState === 'HUNT_TIME') {
+          camera.position.set(playerGroup.position.x, playerGroup.position.y + 2.2, playerGroup.position.z);
+          camera.rotation.set(cameraAngleY, cameraAngleX, 0, 'YXZ');
+        } else {
+          const camDist = mode === 'PAINT' ? 4 : 7;
+          camera.position.x = playerGroup.position.x + camDist * Math.sin(cameraAngleX) * Math.cos(cameraAngleY);
+          camera.position.y = playerGroup.position.y + camDist * Math.sin(cameraAngleY) + 1.2;
+          camera.position.z = playerGroup.position.z + camDist * Math.cos(cameraAngleX) * Math.cos(cameraAngleY);
+          camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.2, playerGroup.position.z);
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+  </script>
+</body>
+</html>
